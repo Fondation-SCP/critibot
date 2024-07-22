@@ -1,5 +1,9 @@
 use std::env;
 
+use fondabots_lib::{
+    affichan::Affichan,
+    Bot
+};
 use maplit::hashmap;
 use serenity::all::{ChannelId, GatewayIntents};
 
@@ -7,10 +11,6 @@ use ecrit::{
     Ecrit,
     fields::Status,
     fields::Type
-};
-use fondabots_lib::{
-    affichan::Affichan,
-    Bot
 };
 
 mod ecrit;
@@ -48,7 +48,7 @@ async fn main() {
                 }))
             ],
             hashmap! {
-                "organichan" => 878917114474410004
+                "organichan" => 614947463610236939
             }
         ).await {
             Ok(mut bot) => if let Err(e) = bot.start().await {
