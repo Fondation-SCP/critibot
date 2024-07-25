@@ -1,7 +1,12 @@
 use std::collections::HashMap;
-use std::ops::BitAnd;
+use std::str::FromStr;
 
 use chrono::DateTime;
+use fondabots_lib;
+use fondabots_lib::{Bot, Object, try_loop};
+use fondabots_lib::DataType;
+use fondabots_lib::ErrType;
+use fondabots_lib::tools::basicize;
 use poise::serenity_prelude as serenity;
 use regex::Regex;
 use rss::Channel;
@@ -14,11 +19,6 @@ use yaml_rust2::yaml;
 use fields::Interet;
 use fields::Status;
 use fields::Type;
-use fondabots_lib;
-use fondabots_lib::{Bot, Object, try_loop};
-use fondabots_lib::DataType;
-use fondabots_lib::ErrType;
-use fondabots_lib::tools::basicize;
 
 pub mod fields;
 
@@ -138,34 +138,6 @@ impl Ecrit {
         None
     }
 
-    fn _sort_merge<'a>(mut a: Vec<(&'a u64, &'a Ecrit)>, mut b: Vec<(&'a u64, &'a Ecrit)>) -> Vec<(&'a u64, &'a Ecrit)> {
-        let mut res = Vec::new();
-        while !(a.is_empty() && b.is_empty()) {
-            if let (Some(ecrit_a), Some(ecrit_b)) = (a.last(), b.last()) {
-                res.push(if ecrit_a.1.last_update < ecrit_b.1.last_update { &mut a } else { &mut b }.pop().unwrap());
-            } else {
-                while !if a.is_empty() { &b } else { &a }.is_empty() {
-                    res.push(if a.is_empty() { &mut b } else { &mut a }.pop().unwrap());
-                }
-            }
-        }
-        res.reverse();
-        res
-    }
-
-    pub fn sort_by_date<'a>(v: Vec<(&'a u64, &'a Ecrit)>) -> Vec<(&'a u64, &'a Ecrit)> {
-        if v.len() < 1 {
-            v
-        } else {
-            Self::_sort_merge(v[..v.len() / 2].to_vec(), v[v.len() / 2..].to_vec())
-        }
-    }
-
-    pub fn comply_with(&self, s: &Option<Status>, t: &Option<Type>) -> bool {
-        if let Some(status) = s.as_ref() { *status == self.status } else { true }
-            .bitand(if let Some(type_) = t.as_ref() { *type_ == self.type_ } else { true })
-    }
-
     pub fn marquer(&mut self, interet: Interet) {
         self.liberer_id(interet.member);
         self.liberer_name(&interet.name);
@@ -252,8 +224,8 @@ impl Object for Ecrit {
         let lien = data_hash["lien"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un champ lien.".to_string()))?.to_string();
         Ok(Self {
             nom: data_hash["nom"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un champ nom.".to_string()))?.to_string(),
-            status: Status::from(data_hash["status"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un status.".to_string()))?),
-            type_: Type::from(data_hash["type"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un type.".to_string()))?),
+            status: Status::from_str(data_hash["status"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un status.".to_string()))?)?,
+            type_: Type::from_str(data_hash["type"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un type.".to_string()))?)?,
             auteur: data_hash["auteur"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un auteur.".to_string()))?.to_string(),
             interesses: data_hash["interesses"].as_vec().ok_or(ErrType::YamlParseError("Erreur de yaml dans un interesses.".to_string()))?.iter().map(
                 |interet| -> Interet {

@@ -1,12 +1,17 @@
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
+use fondabots_lib::ErrType;
+use fondabots_lib::object::Field;
+use fondabots_lib::tools::basicize;
 use poise::{ChoiceParameter, serenity_prelude as serenity};
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, Timestamp};
 use strum::IntoEnumIterator;
-use strum_macros::{EnumIter};
-use fondabots_lib::tools::basicize;
+use strum_macros::EnumIter;
 
-#[derive(EnumIter, Clone, PartialEq, ChoiceParameter, Debug)]
+use super::Ecrit;
+
+#[derive(EnumIter, Clone, PartialEq, Eq, ChoiceParameter, Debug)]
 pub enum Status {
     Ouvert,
     #[name = "En Attente"]
@@ -46,51 +51,39 @@ impl Display for Status {
     }
 }
 
-impl From<&str> for Status {
-    fn from(value: &str) -> Self {
+impl FromStr for Status {
+    type Err = ErrType;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         for ref v in Status::iter() {
             let vstr: String = v.to_string();
-            if basicize(vstr.as_str()) == basicize(value.to_string().as_str()) {
-                return v.clone()
+            if basicize(vstr.as_str()) == basicize(s.to_string().as_str()) {
+                return Ok(v.clone())
             }
         }
-        eprintln!("Avertissement : conversion invalide de &str ({value}) vers Status. Défaut à Inconnu.");
-        Status::Inconnu
+        Err(ErrType::ObjectNotFound(format!("Statut {s} inexistant.")))
     }
 }
-/*
-#[async_trait::async_trait]
-impl SlashArgument for Status {
-    async fn extract(_ctx: &SerenityContext, _interaction: &CommandInteraction, value: &ResolvedValue<'_>) -> Result<Self, SlashArgError> {
-        if let ResolvedValue::String(s) = value {
-            Ok(Self::from(*s))
+
+impl Field<Ecrit> for Status {
+    fn comply_with(obj: &Ecrit, field: &Option<Self>) -> bool {
+        if let Some(field) = field {
+            return obj.status == *field
         } else {
-            Err(SlashArgError::new_command_structure_mismatch("Pas une chaîne de caractères."))
+            true
         }
     }
 
-    fn create(builder: CreateCommandOption) -> CreateCommandOption {
-        builder.kind(CommandOptionType::String)
+    fn set_for(obj: &mut Ecrit, field: &Self) {
+        obj.status = field.clone();
     }
 
-    fn choices() -> Vec<CommandParameterChoice> {
-        let mut ret = Vec::new();
-        for item in Self::iter() {
-            ret.push(CommandParameterChoice {
-                name: item.to_string(),
-                localizations: hashmap! {
-                    "fr".to_string() => item.to_string()
-                },
-                __non_exhaustive: (),
-            });
-        }
-        ret
+    fn field_name() -> &'static str {
+        "Statut"
     }
 }
 
- */
-
-#[derive(EnumIter, Clone, PartialEq, ChoiceParameter, Debug)]
+#[derive(EnumIter, Clone, PartialEq, Eq, ChoiceParameter, Debug)]
 pub enum Type {
     Conte,
     #[name = "Idée"]
@@ -100,42 +93,18 @@ pub enum Type {
     FormatGdi,
     Autre
 }
-/*
-#[async_trait::async_trait]
-impl SlashArgument for Type {
-    async fn extract(_ctx: &SerenityContext, _interaction: &CommandInteraction, value: &ResolvedValue<'_>) -> Result<Self, SlashArgError> {
-        if let ResolvedValue::String(s) = value {
-            Ok(Self::from(*s))
-        } else {
-            Err(SlashArgError::new_command_structure_mismatch("Pas une chaîne de caractères."))
-        }
-    }
 
-    fn create(builder: CreateCommandOption) -> CreateCommandOption {
-        builder.kind(CommandOptionType::String)
-    }
+impl FromStr for Type {
+    type Err = ErrType;
 
-    fn choices() -> Vec<CommandParameterChoice> {
-        let mut ret = Vec::new();
-        for item in Self::iter() {
-            ret.push(item.to_string());
-        }
-        ret
-    }
-}
-
- */
-
-impl From<&str> for Type {
-    fn from(value: &str) -> Self {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         for ref v in Type::iter() {
             let vstr: String = v.to_string();
-            if basicize(vstr.as_str()) == basicize(value.to_string().as_str()) {
-                return v.clone()
+            if basicize(vstr.as_str()) == basicize(s.to_string().as_str()) {
+                return Ok(v.clone())
             }
         }
-        eprintln!("Avertissement : conversion invalide de &str ({value}) vers Type. Défaut à Autre.");
-        Type::Autre
+        Err(ErrType::ObjectNotFound(format!("Type {s} inexistant.")))
     }
 }
 
@@ -148,6 +117,24 @@ impl Display for Type {
             Type::FormatGdi => "Format GdI",
             Type::Autre => "Autre"
         })
+    }
+}
+
+impl Field<Ecrit> for Type {
+    fn comply_with(obj: &Ecrit, field: &Option<Self>) -> bool {
+        if let Some(field) = field {
+            return obj.type_ == *field;
+        } else {
+            true
+        }
+    }
+
+    fn set_for(obj: &mut Ecrit, field: &Self) {
+        obj.type_ = field.clone();
+    }
+
+    fn field_name() -> &'static str {
+        "Type"
     }
 }
 

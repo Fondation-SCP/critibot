@@ -1,15 +1,16 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
+use fondabots_lib::{
+    ErrType,
+    generic_commands,
+    Object,
+    tools::{alias, basicize, get_object, parse_date},
+    tools
+};
 use poise::{Command, Context, CreateReply};
 use rand::prelude::*;
 use serenity::all::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, Timestamp};
-
-use fondabots_lib::{
-    Bot,
-    ErrType,
-    Object,
-    tools::{alias, basicize, get_object, parse_date}
-};
 
 use crate::{
     DataType,
@@ -45,53 +46,7 @@ pub async fn lister(
     #[description = "Status recherché"] status: Option<Status>,
     #[description = "Type recherché"] type_: Option<Type>
 ) -> Result<(), ErrType> {
-    if status.is_none() && type_.is_none() {
-        Err(ErrType::CommandUseError("au moins l’un des deux paramètres doit être spécifié.".to_string()))?;
-    }
-    let mut messages = Vec::new();
-    let mut buffer = String::new();
-    let bot = &mut ctx.data().lock().await;
-    let database = &bot.database;
-    let mut res = Vec::new();
-    for e in database {
-        if e.1.comply_with(&status, &type_) {
-            res.push(e);
-        }
-    }
-    res = Ecrit::sort_by_date(res);
-
-    for (_, ecrit) in res {
-        let to_add = ecrit.get_list_entry();
-        if buffer.len() + to_add.len() > 1000 {
-            messages.push(buffer);
-            buffer = String::new();
-        }
-        buffer += to_add.as_str();
-    }
-    if !buffer.is_empty() {
-        messages.push(buffer);
-    }
-
-    if messages.is_empty() {
-        ctx.send(CreateReply::default().embed(CreateEmbed::new()
-            .title("Aucun résultat.")
-            .color(16001600)
-            .author(CreateEmbedAuthor::new(format!("Recherche : {} – {}",
-                                                   if let Some(s) = status {s.to_string()} else {"Tous status".to_string()},
-                                                   if let Some(t) = type_ {t.to_string()} else {"Tous types".to_string()})))
-            .timestamp(Timestamp::now()))).await?;
-    } else {
-        bot.send_embed(&ctx, Bot::<Ecrit>::get_multimessages(messages, CreateEmbed::new()
-            .author(CreateEmbedAuthor::new(format!("Recherche : {} – {}",
-                                                   if let Some(s) = status {s.to_string()} else {"Tous status".to_string()},
-                                                   if let Some(t) = type_ {t.to_string()} else {"Tous types".to_string()}
-            )))
-            .title("Résultats de la recherche")
-            .timestamp(Timestamp::now())
-            .color(73887))).await?;
-    }
-
-    Ok(())
+    generic_commands::lister_two(ctx, status, type_).await
 }
 
 /// Nettoie la base de données en supprimant les écrits abandonnés, publiés et refusés.
@@ -121,19 +76,7 @@ pub async fn nettoyer(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType
 pub async fn statut(ctx: Context<'_, DataType, ErrType>,
                     #[description = "Critère d’identification de l’écrit"] critere: String,
                     #[description = "Nouveau statut"] statut: Status) -> Result<(), ErrType> {
-    let bot = &mut ctx.data().lock().await;
-    if let Some(object_id) = get_object(&ctx, bot, &critere).await? {
-        if statut != Status::OuvertPlus {
-            bot.archive(vec![object_id]);
-            let ecrit = bot.database.get_mut(&object_id).unwrap();
-            ctx.say(format!("Statut de l’écrit « {} » changé pour « {statut} »", ecrit.get_name())).await?;
-            ecrit.status = statut;
-            ecrit.modified = true;
-        } else {
-            ctx.say("Ce statut ne peut pas être attribué manuellement. Utilisez /marquer ou les boutons pour marquer un écrit.").await?;
-        }
-    }
-    Ok(())
+    generic_commands::change_field(ctx, critere, statut).await
 }
 
 /// Change le type d’un écrit.
@@ -143,15 +86,7 @@ pub async fn type_(ctx: Context<'_, DataType, ErrType>,
                    #[description = "Nouveau type"]
                    #[rename = "type"]
                    type_: Type) -> Result<(), ErrType> {
-    let bot = &mut ctx.data().lock().await;
-    if let Some(object_id) = get_object(&ctx, bot, &critere).await? {
-        bot.archive(vec![object_id]);
-        let ecrit = bot.database.get_mut(&object_id).unwrap();
-        ctx.say(format!("Type de l’écrit « {} » changé pour « {type_} »", ecrit.get_name())).await?;
-        ecrit.type_ = type_;
-        ecrit.modified = true;
-    }
-    Ok(())
+    generic_commands::change_field(ctx, critere, type_).await
 }
 
 /// Valide un écrit. Si c’est une idée, change son type en rapport.
@@ -333,8 +268,27 @@ pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
         ctx.say("Il faut au moins un paramètre non-nul.").await?;
     } else {
         let nom = basicize(nom.unwrap_or(String::new()).as_str());
-        let statuts = statuts.and_then(|s| {Some(s.split(",").map(Status::from).collect())}).unwrap_or(Vec::new());
-        let types = types.and_then(|s| {Some(s.split(",").map(Type::from).collect())}).unwrap_or(Vec::new());
+        let mut errs = Vec::new();
+        let statuts = statuts.and_then(|s| {Some(s.split(",").map(Status::from_str)
+            .filter_map(| e | {
+                match e {
+                    Ok(s) => Some(s),
+                    Err(e) => {errs.push(e); None}
+                }
+            }).collect())}).unwrap_or(Vec::new());
+
+        let types = types.and_then(|s| {Some(s.split(",").map(Type::from_str)
+            .filter_map(| e | {
+                match e {
+                    Ok(s) => Some(s),
+                    Err(e) => {errs.push(e); None}
+                }
+            }).collect())}).unwrap_or(Vec::new());
+
+        if !errs.is_empty() {
+            return Err(errs.pop().unwrap())
+        }
+
         let auteurs = auteurs.and_then(|s| {Some(s.split(",").map(basicize).fold(Vec::new(),
             | total, auteur | {
                 vec![total, Ecrit::recherche_auteur(&auteur, &bot.database)].concat()
@@ -344,7 +298,7 @@ pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
         let modifie_avant = modifie_avant.and_then(parse_date);
         let modifie_apres = modifie_apres.and_then(parse_date);
 
-        let res = Ecrit::sort_by_date(Ecrit::ulister(bot, nom, statuts, types, auteurs, tags, tags_et.unwrap_or(true), modifie_avant, modifie_apres)
+        let res = tools::sort_by_date(Ecrit::ulister(bot, nom, statuts, types, auteurs, tags, tags_et.unwrap_or(true), modifie_avant, modifie_apres)
             .into_iter().map(|id| {(id, bot.database.get(id).unwrap())}).collect());
 
         let mut buffer = String::new();
@@ -369,7 +323,7 @@ pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
                 .author(CreateEmbedAuthor::new(format!("Recherche personnalisée")))
                 .timestamp(Timestamp::now()))).await?;
         } else {
-            bot.send_embed(&ctx, Bot::<Ecrit>::get_multimessages(messages, CreateEmbed::new()
+            bot.send_embed(&ctx, tools::get_multimessages(messages, CreateEmbed::new()
                 .author(CreateEmbedAuthor::new(format!("Recherche personnalisée")))
                 .title("Résultats de la recherche")
                 .timestamp(Timestamp::now())
@@ -478,7 +432,7 @@ pub async fn lister_tags(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrT
             .author(CreateEmbedAuthor::new("Liste des tags"))
             .timestamp(Timestamp::now()))).await?;
     } else {
-        bot.send_embed(&ctx, Bot::<Ecrit>::get_multimessages(messages, CreateEmbed::new()
+        bot.send_embed(&ctx, tools::get_multimessages(messages, CreateEmbed::new()
             .title("Liste des tags").author(CreateEmbedAuthor::new("Liste des tags"))
             .timestamp(Timestamp::now()).color(73887))).await?;
     }
@@ -578,7 +532,7 @@ pub async fn aide(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType> {
             `après: {jj/mm/aaaa}` : Les écirts doivent avoir été modifiés pour la dernière fois après la date indiquée.", false),
             ("Code source", "Disponible sur [Github](https://github.com/Fondation-SCP/fondabots).", false)
         ])
-        .footer(CreateEmbedFooter::new("Version 4.0 (Rust 1.0)"))
+        .footer(CreateEmbedFooter::new("Version 4.0.1 (Rust 1.0.1)"))
         .author(CreateEmbedAuthor::new("Critibot").icon_url("https://media.discordapp.net/attachments/719194758093733988/842082066589679676/Critiqueurs5.jpg"))
     )).await?;
     Ok(())
