@@ -6,6 +6,7 @@ use fondabots_lib;
 use fondabots_lib::{Bot, Object, try_loop};
 use fondabots_lib::DataType;
 use fondabots_lib::ErrType;
+use fondabots_lib::object::Field;
 use fondabots_lib::tools::basicize;
 use poise::serenity_prelude as serenity;
 use regex::Regex;
@@ -69,22 +70,6 @@ impl Ecrit {
         self.interesses.clear();
     }
 
-    pub fn liberer(&mut self, membre: &String) -> bool {
-        let mut index: usize = 0;
-        for interet in &self.interesses {
-            if interet.name == *membre {
-                break;
-            }
-            index += 1;
-        }
-        if index == self.interesses.len() {
-            false
-        } else {
-            self.interesses.remove(index);
-            true
-        }
-    }
-
     pub fn liberer_id(&mut self, membre: u64) -> bool {
         if membre == 0 {
             return false;
@@ -142,6 +127,7 @@ impl Ecrit {
         self.liberer_id(interet.member);
         self.liberer_name(&interet.name);
         self.interesses.push(interet);
+        self.status = Status::OuvertPlus;
         self.modified = true;
     }
 
@@ -289,13 +275,13 @@ impl Object for Ecrit {
 
     fn get_embed(&self) -> CreateEmbed {
         let mut fields = vec![
-            ("Type", self.type_.to_string(), false),
-            ("Statut", self.status.to_string(), false),
+            (Type::field_name(), self.type_.to_string(), false),
+            (Status::field_name(), self.status.to_string(), false),
         ];
         if self.status == Status::OuvertPlus {
             let mut interets_list = String::new();
             for interet in &self.interesses {
-                interets_list += format!("{} {} le {}\n", interet.type_, interet.name, interet.date.format("%d %B %Y à %H:%M")).as_str();
+                interets_list += format!("{} par {} le {}\n", interet.type_, interet.name, interet.date.format("%d %B %Y à %H:%M")).as_str();
             }
             fields.push(("Marques d’intérêt", interets_list, false));
         }
@@ -403,7 +389,7 @@ impl Object for Ecrit {
                         if bot.database.contains_key(&id) {
                             bot.archive(vec![id]);
                             bot.database.get_mut(&id).unwrap()
-                                .liberer(interaction.member.as_ref().unwrap().nick.as_ref().unwrap_or(&interaction.member.as_ref().unwrap().user.name));
+                                .liberer_name(interaction.member.as_ref().unwrap().nick.as_ref().unwrap_or(&interaction.member.as_ref().unwrap().user.name));
                         } else {
                             return Err(ErrType::ObjectNotFound(id.to_string()));
                         }
@@ -535,5 +521,13 @@ impl Object for Ecrit {
         bot.last_rss_update = last_date;
         bot.update_affichans = true;
         Ok(())
+    }
+
+    fn get_date(&self) -> &Timestamp {
+        &self.last_update
+    }
+
+    fn set_date(&mut self, t: Timestamp) {
+        self.last_update = t;
     }
 }
