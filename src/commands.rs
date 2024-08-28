@@ -2,21 +2,21 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use fondabots_lib::{
-    ErrType,
     generic_commands,
-    Object,
+    tools,
     tools::{alias, basicize, get_object, parse_date},
-    tools
+    ErrType,
+    Object
 };
 use poise::{Command, Context, CreateReply};
 use rand::prelude::*;
 use serenity::all::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, Timestamp};
 
 use crate::{
-    DataType,
-    ecrit::Ecrit,
+    ecrit::fields::Type,
     ecrit::fields::{Interet, Status},
-    ecrit::fields::Type
+    ecrit::Ecrit,
+    DataType
 };
 
 /// Ajoute manuellement un écrit à la base de données.
@@ -289,11 +289,32 @@ pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
             return Err(errs.pop().unwrap())
         }
 
-        let auteurs = auteurs.and_then(|s| {Some(s.split(",").map(basicize).fold(Vec::new(),
-            | total, auteur | {
-                vec![total, Ecrit::recherche_auteur(&auteur, &bot.database)].concat()
+        let auteurs = auteurs.and_then(|s| {Some(s.split(",").map(basicize).map(
+            |auteur_critere| {
+                let auteurs_vec = Ecrit::recherche_auteur(&auteur_critere, &bot.database);
+                if auteurs_vec.is_empty() {
+                    Err(format!("Aucun auteur correspondant au critère {auteur_critere} trouvé dans la base de données."))
+                } else if auteurs_vec.len() > 1 {
+                    Err(format!("Plus d’un auteur de la base de donnée correspond au critère {auteur_critere}."))
+                } else {
+                    Ok(auteurs_vec[0])
+                }
             }
-        ))}).unwrap_or(Vec::new());
+        ).collect())}).unwrap_or(Vec::new());
+
+        let auteurs_errors: Vec<&String> = auteurs.iter().filter_map(|res| match res {
+            Err(e) => Some(e),
+            _ => None
+        }).collect();
+
+        if !auteurs_errors.is_empty() {
+            ctx.say(auteurs_errors.into_iter().fold(String::new(), |s, err|
+                s + err.as_str() + "\n"
+            )).await?;
+            return Ok(())
+        }
+        let auteurs: Vec<&String> = auteurs.into_iter().map(|res| res.unwrap()).collect();
+
         let tags: Vec<String> = tags.and_then(|s| {Some(s.split(",").map(basicize).collect())}).unwrap_or(Vec::new());
         let modifie_avant = modifie_avant.and_then(parse_date);
         let modifie_apres = modifie_apres.and_then(parse_date);
@@ -301,6 +322,7 @@ pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
         let res = tools::sort_by_date(Ecrit::ulister(bot, nom, statuts, types, auteurs, tags, tags_et.unwrap_or(true), modifie_avant, modifie_apres)
             .into_iter().map(|id| {(id, bot.database.get(id).unwrap())}).collect());
 
+        /* TODO: remplacer par la fonction dédiée lors de la mise à jour de la lib */
         let mut buffer = String::new();
         let mut messages = Vec::new();
 
@@ -543,5 +565,5 @@ pub fn command_list() -> Vec<Command<DataType, ErrType>> {
     vec![ajouter(), lister(), nettoyer(), statut(), type_(), marquer(), liberer(), critique(),
          archiver_avant(), auteur(), ulister(), atag(), rtag(), lister_tags(), alias("ajouter_tag", atag()),
         alias("retirer_tag", rtag()), alias("supprimer_tag", rtag()), aleatoire(), alias("random", aleatoire()),
-        ancien(), aide(), alias("help", aide())]
+        ancien(), aide(), alias("help", aide()), valider()]
 }

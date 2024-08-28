@@ -3,19 +3,19 @@ use std::str::FromStr;
 
 use chrono::DateTime;
 use fondabots_lib;
-use fondabots_lib::{Bot, Object, try_loop};
-use fondabots_lib::DataType;
-use fondabots_lib::ErrType;
 use fondabots_lib::object::Field;
 use fondabots_lib::tools::basicize;
+use fondabots_lib::DataType;
+use fondabots_lib::ErrType;
+use fondabots_lib::{try_loop, Bot, Object};
 use poise::serenity_prelude as serenity;
 use regex::Regex;
 use rss::Channel;
-use serenity::all::{ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, Timestamp};
 use serenity::all::Context as SerenityContext;
+use serenity::all::{ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, Timestamp};
 use serenity::builder::CreateEmbedAuthor;
-use yaml_rust2::Yaml;
 use yaml_rust2::yaml;
+use yaml_rust2::Yaml;
 
 use fields::Interet;
 use fields::Status;
@@ -167,19 +167,21 @@ impl Ecrit {
             bot.database.keys().collect()
         } else {
             bot.search(&critere)
-        }.into_iter().filter(
-            |ecrit| {
-                let ecrit = bot.database.get(ecrit).unwrap();
+        }.into_iter()
+            .map(|ecrit_id| bot.database.get(ecrit_id).unwrap())
+            .filter(|ecrit| status.contains(&ecrit.status) || status.is_empty())
+            .filter(|ecrit| types.contains(&ecrit.type_) || types.is_empty())
+            .filter(|ecrit| authors.contains(&&ecrit.auteur) || authors.is_empty())
+            .filter(|ecrit| {
                 let tag_list: Vec<bool> = ecrit.tags.iter().map(|tag| {tags.contains(tag)}).collect();
-                (status.contains(&ecrit.status) || status.is_empty()) &&
-                (types.contains(&ecrit.type_) || types.is_empty()) &&
-                (authors.contains(&&ecrit.auteur) || authors.is_empty()) && ((
-                    (!tags_et && tag_list.contains(&true)) ||
-                    (tags_et && tag_list.iter().fold(true, |accumulator, has_tag| {accumulator && *has_tag}))
-                ) || tag_list.is_empty()) &&
-                (modifie_avant.is_none() || ecrit.last_update < modifie_avant.unwrap()) &&
-                (modifie_apres.is_none() || ecrit.last_update > modifie_apres.unwrap())
-            }).collect()
+                tag_list.is_empty() ||
+                (!tags_et && tag_list.contains(&true)) ||
+                (tags_et && tag_list.into_iter().fold(true, |accumulator, has_tag| {accumulator && has_tag}))
+            })
+            .filter(|ecrit| modifie_avant.is_none() || ecrit.last_update < modifie_avant.unwrap())
+            .filter(|ecrit| modifie_apres.is_none() || ecrit.last_update > modifie_apres.unwrap())
+            .map(|ecrit| &ecrit.id)
+            .collect()
     }
 }
 
