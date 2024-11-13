@@ -168,11 +168,13 @@ pub async fn liberer(ctx: Context<'_, DataType, ErrType>,
             bot.archive(vec![object_id]);
             let ecrit = bot.database.get_mut(&object_id).unwrap();
             let author_member = ctx.author_member().await.ok_or(ErrType::Generic)?;
-            if if procuration.is_none() {
-                ecrit.liberer_id(author_member.user.id.get())
-            } else {
-                ecrit.liberer_name(procuration.as_ref().unwrap())
-            } {
+            let a_pu_etre_libere =
+                if procuration.is_none() {
+                    ecrit.liberer_id(author_member.user.id.get())
+                } else {
+                    ecrit.liberer_name(procuration.as_ref().unwrap())
+                };
+            if a_pu_etre_libere {
                 ctx.say(format!("Écrit « {} » libéré de la marque de {}", ecrit.get_name(),
                                 procuration.as_ref().unwrap_or(author_member.nick.as_ref().unwrap_or(&author_member.user.name)))).await?;
             } else {
@@ -214,11 +216,11 @@ pub async fn archiver_avant(ctx: Context<'_, DataType, ErrType>,
     ctx.defer().await?;
     let bot = &mut ctx.data().lock().await;
     if let Some(date) = parse_date(date) {
-        let to_mark: Vec<u64> = bot.database.iter_mut().filter(
-            | (_, ecrit) | {
+        let to_mark: Vec<u64> = bot.database.iter_mut()
+            .filter(| (_, ecrit) | {
                 (ecrit.last_update < date) && (ecrit.status == Status::Ouvert || ecrit.status == Status::OuvertPlus)
-            }
-        ).map(|(&id, _)| {id}).collect();
+            })
+            .map(|(&id, _)| id).collect();
         bot.archive(to_mark.clone());
         let count = to_mark.len();
         to_mark.into_iter().for_each(
@@ -264,94 +266,85 @@ pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
                     #[description = "Date minimale de dernière modification de l’écrit (jj/mm/aaaa)"] modifie_apres: Option<String>) -> Result<(), ErrType> {
     ctx.defer().await?;
     let bot = &mut ctx.data().lock().await;
+
     if nom.is_none() && auteurs.is_none() && statuts.is_none() && types.is_none() && tags.is_none() && modifie_avant.is_none() && modifie_apres.is_none() {
         ctx.say("Il faut au moins un paramètre non-nul.").await?;
+        return Ok(())
+    }
+
+    /* Traitement des paramètres */
+    let nom = basicize(nom.unwrap_or(String::new()).as_str());
+    let mut errs = Vec::new();
+    let statuts = statuts.and_then(|s| {Some(s.split(",").map(Status::from_str)
+        .filter_map(| e | {
+            match e {
+                Ok(s) => Some(s),
+                Err(e) => {errs.push(e); None}
+            }
+        }).collect())}).unwrap_or(Vec::new());
+
+    let types = types.and_then(|s| {Some(s.split(",").map(Type::from_str)
+        .filter_map(| e | {
+            match e {
+                Ok(s) => Some(s),
+                Err(e) => {errs.push(e); None}
+            }
+        }).collect())}).unwrap_or(Vec::new());
+
+    if !errs.is_empty() {
+        return Err(errs.pop().unwrap())
+    }
+
+    let auteurs = auteurs.and_then(|s| {Some(s.split(",").map(basicize).map(
+        |auteur_critere| {
+            let auteurs_vec = Ecrit::recherche_auteur(&auteur_critere, &bot.database);
+            if auteurs_vec.is_empty() {
+                Err(format!("Aucun auteur correspondant au critère {auteur_critere} trouvé dans la base de données."))
+            } else if auteurs_vec.len() > 1 {
+                Err(format!("Plus d’un auteur de la base de donnée correspond au critère {auteur_critere}."))
+            } else {
+                Ok(auteurs_vec[0])
+            }
+        }
+    ).collect())}).unwrap_or(Vec::new());
+
+    let auteurs_errors: Vec<&String> = auteurs.iter().filter_map(|res| match res {
+        Err(e) => Some(e),
+        _ => None
+    }).collect();
+
+    if !auteurs_errors.is_empty() {
+        ctx.say(auteurs_errors.into_iter().fold(String::new(), |s, err|
+            s + err.as_str() + "\n"
+        )).await?;
+        return Ok(())
+    }
+
+    let auteurs: Vec<&String> = auteurs.into_iter().map(|res| res.unwrap()).collect();
+
+    let tags: Vec<String> = tags.and_then(|s| {Some(s.split(",").map(basicize).collect())}).unwrap_or(Vec::new());
+    let modifie_avant = modifie_avant.and_then(parse_date);
+    let modifie_apres = modifie_apres.and_then(parse_date);
+
+    let res = tools::sort_by_date(Ecrit::ulister(bot, nom, statuts, types, auteurs, tags, tags_et.unwrap_or(true), modifie_avant, modifie_apres)
+        .into_iter().map(|id| {(id, bot.database.get(id).unwrap())}).collect());
+
+    if res.is_empty() {
+        ctx.send(CreateReply::default().embed(CreateEmbed::new()
+            .title("Aucun résultat.")
+            .color(16001600)
+            .author(CreateEmbedAuthor::new(String::from("Recherche personnalisée")))
+            .timestamp(Timestamp::now()))).await?;
     } else {
-        let nom = basicize(nom.unwrap_or(String::new()).as_str());
-        let mut errs = Vec::new();
-        let statuts = statuts.and_then(|s| {Some(s.split(",").map(Status::from_str)
-            .filter_map(| e | {
-                match e {
-                    Ok(s) => Some(s),
-                    Err(e) => {errs.push(e); None}
-                }
-            }).collect())}).unwrap_or(Vec::new());
-
-        let types = types.and_then(|s| {Some(s.split(",").map(Type::from_str)
-            .filter_map(| e | {
-                match e {
-                    Ok(s) => Some(s),
-                    Err(e) => {errs.push(e); None}
-                }
-            }).collect())}).unwrap_or(Vec::new());
-
-        if !errs.is_empty() {
-            return Err(errs.pop().unwrap())
-        }
-
-        let auteurs = auteurs.and_then(|s| {Some(s.split(",").map(basicize).map(
-            |auteur_critere| {
-                let auteurs_vec = Ecrit::recherche_auteur(&auteur_critere, &bot.database);
-                if auteurs_vec.is_empty() {
-                    Err(format!("Aucun auteur correspondant au critère {auteur_critere} trouvé dans la base de données."))
-                } else if auteurs_vec.len() > 1 {
-                    Err(format!("Plus d’un auteur de la base de donnée correspond au critère {auteur_critere}."))
-                } else {
-                    Ok(auteurs_vec[0])
-                }
-            }
-        ).collect())}).unwrap_or(Vec::new());
-
-        let auteurs_errors: Vec<&String> = auteurs.iter().filter_map(|res| match res {
-            Err(e) => Some(e),
-            _ => None
-        }).collect();
-
-        if !auteurs_errors.is_empty() {
-            ctx.say(auteurs_errors.into_iter().fold(String::new(), |s, err|
-                s + err.as_str() + "\n"
-            )).await?;
-            return Ok(())
-        }
-        let auteurs: Vec<&String> = auteurs.into_iter().map(|res| res.unwrap()).collect();
-
-        let tags: Vec<String> = tags.and_then(|s| {Some(s.split(",").map(basicize).collect())}).unwrap_or(Vec::new());
-        let modifie_avant = modifie_avant.and_then(parse_date);
-        let modifie_apres = modifie_apres.and_then(parse_date);
-
-        let res = tools::sort_by_date(Ecrit::ulister(bot, nom, statuts, types, auteurs, tags, tags_et.unwrap_or(true), modifie_avant, modifie_apres)
-            .into_iter().map(|id| {(id, bot.database.get(id).unwrap())}).collect());
-
-        /* TODO: remplacer par la fonction dédiée lors de la mise à jour de la lib */
-        let mut buffer = String::new();
-        let mut messages = Vec::new();
-
-        for ecrit in res {
-            let to_add = ecrit.1.get_list_entry();
-            if buffer.len() + to_add.len() > 1000 {
-                messages.push(buffer);
-                buffer = String::new();
-            }
-            buffer += to_add.as_str();
-        }
-        if !buffer.is_empty() {
-            messages.push(buffer);
-        }
-
-        if messages.is_empty() {
-            ctx.send(CreateReply::default().embed(CreateEmbed::new()
-                .title("Aucun résultat.")
-                .color(16001600)
-                .author(CreateEmbedAuthor::new(format!("Recherche personnalisée")))
-                .timestamp(Timestamp::now()))).await?;
-        } else {
-            bot.send_embed(&ctx, tools::get_multimessages(messages, CreateEmbed::new()
-                .author(CreateEmbedAuthor::new(format!("Recherche personnalisée")))
+        let embeds = tools::get_multimessages(
+            tools::create_paged_list(res, |(_, ecrit)| ecrit.get_list_entry(), 1000),
+            CreateEmbed::new()
+                .author(CreateEmbedAuthor::new(String::from("Recherche personnalisée")))
                 .title("Résultats de la recherche")
+                .color(73887)
                 .timestamp(Timestamp::now())
-                .color(73887))).await?;
-        }
-
+        );
+        bot.send_embed(&ctx, embeds).await?;
     }
     Ok(())
 }
@@ -387,17 +380,11 @@ pub async fn rtag(ctx: Context<'_, DataType, ErrType>,
         let ecrit = bot.database.get(&object_id).unwrap();
         let critere_tag = basicize(critere_tag.as_str());
         let critere_tag = critere_tag.split(" ");
-        let tags_to_keep: Vec<String> = ecrit.tags.iter().filter(
-            | tag | {
-                critere_tag.clone().fold(true,
-                | res, mot_critere | {
-                    res && basicize(tag).split(" ").map(
-                    | mot_tag | {
-                        mot_tag.contains(mot_critere)
-                    }).collect::<Vec<bool>>().contains(&true)
-                })
-            }
-        ).map(| tag | {tag.clone()}).collect();
+        let tags_to_keep: Vec<String> = ecrit.tags.iter().filter( | tag |
+            critere_tag.clone().all(|mot_critere|
+                basicize(tag).split(" ").any(| mot_tag | mot_tag.contains(mot_critere))
+            )
+        ).map(| tag | tag.clone()).collect();
         if tags_to_keep.len() < ecrit.tags.len() {
             bot.archive(vec![object_id]);
             let ecrit = bot.database.get_mut(&object_id).unwrap();
@@ -417,43 +404,29 @@ pub async fn lister_tags(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrT
     ctx.defer().await?;
     let bot = &mut ctx.data().lock().await;
     let tags_total = bot.database.iter().fold(HashMap::new(),
-                                              |container, (_, ecrit)| {
-                                                  let mut new_container = container;
-                                                  ecrit.tags.iter().for_each(
-                                                      |tag| {
-                                                          match new_container.get(tag) {
-                                                              Some(&count) => { new_container.insert(tag.clone(), count + 1); }
-                                                              None => { new_container.insert(tag.clone(), 1); }
-                                                          }
-                                                      }
-                                                  );
-                                                  new_container
-                                              }
+      |container, (_, ecrit)| {
+          let mut new_container = container;
+          ecrit.tags.iter().for_each(
+              |tag| {
+                  match new_container.get(tag) {
+                      Some(&count) => { new_container.insert(tag.clone(), count + 1); }
+                      None => { new_container.insert(tag.clone(), 1); }
+                  }
+              }
+          );
+          new_container
+      }
     );
-    eprintln!("{tags_total:?}");
-    let mut buffer = String::new();
-    let mut messages = Vec::new();
 
-    for (tag, nb_ecrits) in tags_total {
-        let to_add = format!("**{tag}**\n{nb_ecrits} écrit(s)\n\n");
-        if to_add.len() + buffer.len() > 1000 {
-            messages.push(buffer);
-            buffer = String::new();
-        }
-        buffer += to_add.as_str();
-    }
-
-    if !buffer.is_empty() {
-        messages.push(buffer);
-    }
-
-    if messages.is_empty() {
+    if tags_total.is_empty() {
         ctx.send(CreateReply::default().embed(CreateEmbed::new()
             .title("Aucun tag dans la base de données.")
             .color(16001600)
             .author(CreateEmbedAuthor::new("Liste des tags"))
             .timestamp(Timestamp::now()))).await?;
     } else {
+        let messages = tools::create_paged_list(tags_total.into_iter().collect(),
+                                                |(tag, nb_ecrits)| format!("**{tag}**\n{nb_ecrits} écrit(s)\n\n"), 1000);
         bot.send_embed(&ctx, tools::get_multimessages(messages, CreateEmbed::new()
             .title("Liste des tags").author(CreateEmbedAuthor::new("Liste des tags"))
             .timestamp(Timestamp::now()).color(73887))).await?;

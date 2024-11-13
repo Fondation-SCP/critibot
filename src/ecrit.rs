@@ -1,4 +1,6 @@
+use std::cmp::max;
 use std::collections::HashMap;
+use std::mem::take;
 use std::str::FromStr;
 
 use chrono::DateTime;
@@ -7,7 +9,7 @@ use fondabots_lib::object::Field;
 use fondabots_lib::tools::basicize;
 use fondabots_lib::DataType;
 use fondabots_lib::ErrType;
-use fondabots_lib::{try_loop, Bot, Object};
+use fondabots_lib::{Bot, Object};
 use poise::serenity_prelude as serenity;
 use regex::Regex;
 use rss::Channel;
@@ -71,44 +73,30 @@ impl Ecrit {
     }
 
     pub fn liberer_id(&mut self, membre: u64) -> bool {
-        if membre == 0 {
-            return false;
+        if membre == 0 {  /*  Étant donné qu'il peut exister des réservations à l'identifiant zéro, */
+            return false; /*  ce sont les réservations faites pour un autre utilisateur             */
         }
-        let mut index: usize = 0;
-        for interet in &self.interesses {
-            if interet.member == membre {
-                break;
-            }
-            index += 1;
-        }
-        if index == self.interesses.len() {
-            false
-        } else {
+
+        let index = self.interesses.iter().position(|interet| interet.member == membre);
+
+        if let Some(index) = index {
             self.interesses.remove(index);
             if self.interesses.len() == 0 {
                 self.status = Status::Ouvert;
             }
-            true
         }
+        index.is_some()
     }
 
     pub fn liberer_name(&mut self, membre: &String) -> bool {
-        let mut index: usize = 0;
-        for interet in &self.interesses {
-            if interet.name == *membre {
-                break;
-            }
-            index += 1;
-        }
-        if index == self.interesses.len() {
-            false
-        } else {
+        let index = self.interesses.iter().position(|interet| interet.name == *membre);
+        if let Some(index) = index {
             self.interesses.remove(index);
             if self.interesses.len() == 0 {
                 self.status = Status::Ouvert;
             }
-            true
         }
+        index.is_some()
     }
 
     pub fn find_id(url: &String) -> Option<u64> {
@@ -131,25 +119,24 @@ impl Ecrit {
         self.modified = true;
     }
 
+    pub fn liste_auteurs<'a>(database: &'a HashMap<u64, Self>) -> Vec<&'a String> {
+        database.iter().map(|(_, ecrit)| &ecrit.auteur)
+            .fold(Vec::new(), |mut vec, auteur| {
+                if vec.iter().find(|&&vec_auteur| *vec_auteur == *auteur).is_none() {
+                    vec.push(auteur);
+                }
+                vec
+            })
+    }
+
     pub fn recherche_auteur<'a>(critere: &String, database: &'a HashMap<u64, Self>) -> Vec<&'a String> {
-        let mut ret = Vec::new();
-        for (_, ecrit) in database {
-            let mut ok = true;
-            for mot_s in critere.split(" ") {
-                let mut found = false;
-                for mot in ecrit.auteur.split(" ") {
-                    found = found || basicize(mot).contains(&basicize(mot_s));
-                }
-                if !found {
-                    ok = false;
-                    break;
-                }
-            }
-            if ok {
-                ret.push(&ecrit.auteur);
-            }
-        }
-        ret
+        let mut mots_critere = critere.split(" ");
+        Self::liste_auteurs(database).into_iter().filter(|auteur| {
+            let mut mots_auteur = auteur.split(" ");
+            mots_critere.all(|mot_critere|
+                mots_auteur.any(|mot_auteur| basicize(mot_auteur).contains(&basicize(mot_critere)))
+            )
+        }).collect()
     }
 
     pub fn ulister<'a>(
@@ -247,15 +234,15 @@ impl Object for Ecrit {
         yaml_out.insert(Yaml::String("lastUpdate".to_string()), Yaml::Integer(self.last_update.timestamp()));
         yaml_out.insert(Yaml::String("auteur".to_string()), Yaml::String(self.auteur.clone()));
         yaml_out.insert(Yaml::String("edited".to_string()), Yaml::Boolean(self.modified.clone()));
-        let mut array_interet = yaml::Array::new();
-        for interet in &self.interesses {
-            let mut hash_interet = yaml::Hash::new();
-            hash_interet.insert(Yaml::String("name".to_string()), Yaml::String(interet.name.to_string()));
-            hash_interet.insert(Yaml::String("date".to_string()), Yaml::Integer(interet.date.timestamp()));
-            hash_interet.insert(Yaml::String("type".to_string()), Yaml::String(interet.type_.to_string()));
-            hash_interet.insert(Yaml::String("member".to_string()), Yaml::Integer(interet.member as i64));
-            array_interet.push(Yaml::Hash(hash_interet));
-        }
+        let array_interet =
+            yaml::Array::from(self.interesses.iter().map(|interet| {
+                let mut hash_interet = yaml::Hash::new();
+                hash_interet.insert(Yaml::String("name".to_string()), Yaml::String(interet.name.to_string()));
+                hash_interet.insert(Yaml::String("date".to_string()), Yaml::Integer(interet.date.timestamp()));
+                hash_interet.insert(Yaml::String("type".to_string()), Yaml::String(interet.type_.to_string()));
+                hash_interet.insert(Yaml::String("member".to_string()), Yaml::Integer(interet.member as i64));
+                Yaml::Hash(hash_interet)
+            }).collect::<Vec<Yaml>>());
         yaml_out.insert(Yaml::String("interesses".to_string()), Yaml::Array(array_interet));
         yaml_out.insert(Yaml::String("tags".to_string()), Yaml::Array(
             self.tags.iter().map(
@@ -280,20 +267,22 @@ impl Object for Ecrit {
             (Type::field_name(), self.type_.to_string(), false),
             (Status::field_name(), self.status.to_string(), false),
         ];
+
         if self.status == Status::OuvertPlus {
-            let mut interets_list = String::new();
-            for interet in &self.interesses {
-                interets_list += format!("{} par {} le {}\n", interet.type_, interet.name, interet.date.format("%d %B %Y à %H:%M")).as_str();
+            let interets_list = self.interesses.iter().map(|interet|
+               format!("{} par {} le {}\n", interet.type_, interet.name, interet.date.format("%d %B %Y à %H:%M"))
+            ).reduce(|str_total, str_current| str_total + str_current.as_str());
+            if let Some(interets_list) = interets_list {
+                fields.push(("Marques d’intérêt", interets_list, false));
             }
-            fields.push(("Marques d’intérêt", interets_list, false));
         }
-        if !self.tags.is_empty() {
-            let mut total = String::new();
-            for tag in &self.tags {
-                total += format!("{tag}\n").as_str();
-            }
-            fields.push(("Tags", total, false));
+
+        let tags_list = self.tags.iter().map(|tag| format!("{tag}\n"))
+            .reduce(|str_total, str_current| str_total + str_current.as_str());
+        if let Some(tags_list) = tags_list {
+            fields.push(("Tags", tags_list, false));
         }
+
         CreateEmbed::new()
             .title(self.nom.clone())
             .url(self.lien.clone())
@@ -372,7 +361,7 @@ impl Object for Ecrit {
                     }
                     "c" => {
                         interaction.create_response(ctx, CreateInteractionResponse::Acknowledge).await?;
-                        bot.get_absolute_chan("organichan")?
+                        bot.get_absolute_chan("logs").unwrap()
                             .send_message(ctx, CreateMessage::new().content(format!("« {} » critiqué !",
                                                                                     bot.database.get(&id).ok_or(ErrType::ObjectNotFound(id.to_string()))?.get_name()))).await?;
                         bot.archive(vec![id]);
@@ -380,7 +369,7 @@ impl Object for Ecrit {
                     }
                     "r" => {
                         interaction.create_response(ctx, CreateInteractionResponse::Acknowledge).await?;
-                        bot.get_absolute_chan("organichan")?
+                        bot.get_absolute_chan("logs").unwrap()
                             .send_message(ctx, CreateMessage::new().content(format!("« {} » refusé !",
                                                                                     bot.database.get(&id).ok_or(ErrType::ObjectNotFound(id.to_string()))?.get_name()))).await?;
                         bot.archive(vec![id]);
@@ -462,66 +451,89 @@ impl Object for Ecrit {
         /* OH FUCK */
         let regex_titres = Regex::new(r##"(?i)\s*(?:\s*[\[(][^\[]*?[])][\s/\\\-]*)*(?:scp(?:[-\s][\dXY#█?]+(?:[-\s]fr)?)?)?[\s:\-"]*([^"]*?(?:"[^"]+"?[^"]*?)*)[\s".]*(?:\(.*(?:provisoire|temporaire|version).*\))?[\s".]*$"##).unwrap();
         let bot = &mut bot.lock().await;
-        let mut last_date = DateTime::from_timestamp(0, 0).unwrap();
         let rss = Channel::read_from(&reqwest::get(url).await?.bytes().await?[..])?;
-        for entry in &rss.items {
-            let date = try_loop!(DateTime::parse_from_rfc2822(entry.pub_date.as_ref().unwrap().as_str()), "Erreur lors de la récupération des flux RSS: pas de date.").to_utc();
-            if date > bot.last_rss_update {
-                if entry.title.as_ref().is_some_and(|str| { str.contains("]") }) {
-                    let mut type_ = Type::Rapport;
-                    for balise in regex_balises.captures_iter(entry.title.as_ref().unwrap()) {
-                        let balise = balise.extract::<1>().0.trim().to_lowercase();
-                        if balise.contains("idée") || balise.contains("idee") {
-                            type_ = Type::Idee;
-                        } else if balise.contains("conte") || balise.contains("série") || balise.contains("serie") {
-                            type_ = Type::Conte;
-                        } else if balise.contains("format") {
-                            type_ = Type::FormatGdi;
-                        }
-                    }
-                    let mut title = try_loop!(try_loop!(regex_titres.captures(entry.title.as_ref().unwrap())
-                                .ok_or(ErrType::NoneError), "Erreur lors de l’interprétation du titre.").extract::<1>().1.get(0)
-                                .ok_or(ErrType::NoneError), "Erreur lors de l’interprétation du titre.").to_string();
-                    if title.is_empty() {
-                        title = format!("(sans nom {})", bot.search("sans nom").len());
-                    }
+        /* Copie étant donné qu'elle ne coûte pas grand chose par rapport à la difficulté que ce serait
+         * de l'éviter. */
+        let bot_last_rss_update = bot.last_rss_update.clone();
 
-                    let lien = try_loop!(entry.link.clone().ok_or(ErrType::NoneError), "Pas de lien dans une entrée RSS.");
-                    let id: u64 = try_loop!(Ecrit::find_id(&lien).ok_or(ErrType::NoneError), "Lien mal formé dans une entrée RSS.");
-                    let auteur = if let Some(extensions) = entry.extensions().get("wikidot") {
-                        if let Some(author_names) = extensions.get("authorName") {
-                            if let Some(author_name) = author_names.get(0) {
-                                author_name.value()
-                            } else {None}
-                        } else {None}
-                    } else {None};
-
-                    let ecrit = Ecrit {
-                        status: Status::Ouvert,
-                        type_,
-                        nom: title,
-                        lien,
-                        last_update: Timestamp::now(),
-                        auteur: try_loop!(auteur.ok_or(ErrType::NoneError), "Pas d’auteur dans une entrée RSS.").to_string(),
-                        interesses: vec![],
-                        modified: false,
-                        tags: vec![],
-                        id,
-                    };
-                    if !bot.database.contains_key(&id) {
-                        bot.database.insert(id, ecrit);
-                    } else {
-                        eprintln!("Ajout RSS d’un écrit déjà ajouté. Informations : écrit [{}] - last_rss_update [{}] - last_date [{}] - date>last_rss_update [{}]", date, bot.last_rss_update, last_date, date > bot.last_rss_update);
-                    }
-
+        let last_date = rss.items.into_iter()
+            .filter_map(|entry| match DateTime::parse_from_rfc2822(entry.pub_date.as_ref().unwrap().as_str()) {
+                Ok(date) => if date.to_utc() > bot_last_rss_update {
+                    Some((date.to_utc(), entry))
+                } else {None},
+                Err(_) => {
+                    eprintln!("Erreur lors de la récupération des flux RSS : pas de date.");
+                    None
                 }
+            })
+            .filter(|(_, entry)| entry.title.as_ref().is_some_and(|str| { str.contains("]") }))
+            .filter_map(|(date, mut entry)| {
+                let type_ = regex_balises.captures_iter(entry.title.as_ref().unwrap())
+                    .map(|balise| balise.extract::<1>().0.trim().to_lowercase())
+                    .fold(Type::Rapport, |type_, balise|
+                        if balise.contains("idée") || balise.contains("idee") {
+                            Type::Idee
+                        } else if balise.contains("conte") || balise.contains("série") || balise.contains("serie") {
+                            Type::Conte
+                        } else if balise.contains("format") {
+                            Type::FormatGdi
+                        } else {
+                            type_
+                        }
+                    );
+
+                let title = entry.title.as_ref().and_then(|entry_title|
+                    regex_titres.captures(entry_title.as_str())
+                        .and_then(|capture| capture.extract::<1>().1.to_vec().pop())
+                );
+
+                let lien = take(&mut entry.link);
+
+                let auteur = entry.extensions().get("wikidot")
+                    .and_then(|wikidot| wikidot.get("authorName")
+                        .and_then(|author_name| author_name.get(0)
+                            .and_then(|author_name| author_name.value())
+                        )
+                    );
+
+                if title.is_none() || lien.is_none() || auteur.is_none() {
+                    eprintln!("L'une des données d'une entrée RSS (titre, line ou auteur) est incorrecte.");
+                    return None;
+                }
+                let (title, lien, auteur) = (title.unwrap().to_string(), lien.unwrap(), auteur.unwrap().to_string());
+
+                let id = Ecrit::find_id(&lien);
+                if id.is_none() {
+                    eprintln!("Lien malformé dans une entrée RSS : impossible de récupérer l'ID.");
+                    return None;
+                }
+                let id = id.unwrap();
+
+                Some((date, Ecrit {
+                    status: Status::Ouvert,
+                    type_,
+                    nom: title,
+                    lien,
+                    last_update: Timestamp::now(),
+                    auteur,
+                    interesses: vec![],
+                    modified: false,
+                    tags: vec![],
+                    id,
+                }))
+            }).map(|(date, ecrit)| {
+            if bot.database.contains_key(&ecrit.id) {
+                eprintln!("Ajout RSS d’un écrit déjà ajouté. Informations : écrit [{}] - last_rss_update [{}] - date>last_rss_update [{}]", date, bot.last_rss_update, date > bot.last_rss_update);
+            } else {
+                bot.database.insert(ecrit.id, ecrit);
             }
-            if date > last_date {
-                last_date = date;
-            }
+            date
+        }).max();
+
+        if let Some(last_date) = last_date {
+            bot.last_rss_update = max(last_date, bot.last_rss_update);
+            bot.update_affichans = true;
         }
-        bot.last_rss_update = last_date;
-        bot.update_affichans = true;
         Ok(())
     }
 

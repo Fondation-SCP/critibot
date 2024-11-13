@@ -1,10 +1,10 @@
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-use fondabots_lib::ErrType;
 use fondabots_lib::object::Field;
 use fondabots_lib::tools::basicize;
-use poise::{ChoiceParameter, serenity_prelude as serenity};
+use fondabots_lib::ErrType;
+use poise::{serenity_prelude as serenity, ChoiceParameter};
 use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, Timestamp};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -55,13 +55,10 @@ impl FromStr for Status {
     type Err = ErrType;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        for ref v in Status::iter() {
-            let vstr: String = v.to_string();
-            if basicize(vstr.as_str()) == basicize(s.to_string().as_str()) {
-                return Ok(v.clone())
-            }
-        }
-        Err(ErrType::ObjectNotFound(format!("Statut {s} inexistant.")))
+        let basic_s = basicize(s.to_string().as_str());
+        Status::iter().find(|v| basicize(v.to_string().as_str()) == basic_s)
+            .map_or(Err(ErrType::ObjectNotFound(format!("Statut {s} inexistant."))),
+            |v| Ok(v.clone()))
     }
 }
 
@@ -98,13 +95,10 @@ impl FromStr for Type {
     type Err = ErrType;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        for ref v in Type::iter() {
-            let vstr: String = v.to_string();
-            if basicize(vstr.as_str()) == basicize(s.to_string().as_str()) {
-                return Ok(v.clone())
-            }
-        }
-        Err(ErrType::ObjectNotFound(format!("Type {s} inexistant.")))
+        let basic_s = basicize(s.to_string().as_str());
+        Type::iter().find(|v| basicize(v.to_string().as_str()) == basic_s)
+            .map_or(Err(ErrType::ObjectNotFound(format!("Type {s} inexistant."))),
+                    |v| Ok(v.clone()))
     }
 }
 

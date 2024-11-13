@@ -27,7 +27,7 @@ async fn main() {
             "./critibot.yml",
             commands::command_list(),
             vec![
-                Affichan::new(ChannelId::new(1299620421506699275), Box::new(|ecrit| {
+                Affichan::new(ChannelId::new(1306257262360264714), Box::new(|ecrit| {
                     ecrit.status == Status::Ouvert || ecrit.status == Status::OuvertPlus
                 })),
                 Affichan::new(ChannelId::new(896361827884220467), Box::new(|ecrit| {
@@ -38,7 +38,7 @@ async fn main() {
                 })),
             ],
             hashmap! {
-                "organichan" => 878917114474410004
+                "logs" => 878917114474410004
             }
         ).await {
             Ok(mut bot) => if let Err(e) = bot.start().await {
