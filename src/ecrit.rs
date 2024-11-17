@@ -7,6 +7,7 @@ use chrono::DateTime;
 use fondabots_lib;
 use fondabots_lib::object::Field;
 use fondabots_lib::tools::basicize;
+use fondabots_lib::yaml_rust2::{yaml, Yaml};
 use fondabots_lib::DataType;
 use fondabots_lib::ErrType;
 use fondabots_lib::{Bot, Object};
@@ -16,8 +17,6 @@ use rss::Channel;
 use serenity::all::Context as SerenityContext;
 use serenity::all::{ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, Timestamp};
 use serenity::builder::CreateEmbedAuthor;
-use yaml_rust2::yaml;
-use yaml_rust2::Yaml;
 
 use fields::Interet;
 use fields::Status;
