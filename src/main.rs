@@ -1,27 +1,54 @@
+use std::collections::HashSet;
 use std::env;
 
-use fondabots_lib::{
-    affichan::Affichan,
-    Bot
-};
+use fondabots_lib::{affichan::Affichan, Bot, ErrType};
 use maplit::hashmap;
-use serenity::all::{ChannelId, GatewayIntents};
+use poise::futures_util::FutureExt;
+use poise::{BoxFuture, Context};
+use serenity::all::{ChannelId, GatewayIntents, RoleId, UserId};
 
 use ecrit::{
     fields::Status,
     fields::Type,
     Ecrit
 };
+use fondabots_lib::command_data::{CommandData, Permission};
 
 mod ecrit;
 mod commands;
 pub type DataType = fondabots_lib::DataType<Ecrit>;
 
+fn command_checker(ctx: Context<'_, DataType, ErrType>) -> BoxFuture<Result<bool, ErrType>> {
+    async move {
+        let permissions = ctx.command().custom_data.downcast_ref().unwrap_or(&CommandData::default()).permission;
+        let member = ctx.author_member().await;
+        let auth = match member {
+            Some(member) => match permissions {
+                Permission::READ | Permission::NONE => true,
+                Permission::WRITE => member.roles.contains(&RoleId::new(417334522775076864)), /* Classe-C membre */
+                Permission::MANAGE => member.roles.contains(&RoleId::new(811582204790571020)) /* Équipe Critique */
+                    || member.roles.contains(&RoleId::new(417333090625781761)), /* Staff */
+            },
+            None => false
+        };
+        if !auth {
+            ctx.reply("Vous n'avez pas la permission d'utiliser cette commande.").await?;
+        }
+        Ok(auth)
+    }.boxed()
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
+    let mut owners = HashSet::new();
+    owners.insert(UserId::new(340877529973784586));
+
     if let Some(token) = args.get(1) {
-        match Bot::new(
+        match Bot::default()
+            .owners(owners)
+            .command_checker(Box::new(command_checker))
+            .setup(
             token.clone(),
             GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILD_MEMBERS,
             "./critibot.yml",

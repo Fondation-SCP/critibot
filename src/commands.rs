@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use fondabots_lib::command_data::{CommandData, Permission};
 use fondabots_lib::{
     generic_commands,
     tools,
@@ -20,7 +21,7 @@ use crate::{
 };
 
 /// Ajoute manuellement un écrit à la base de données.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn ajouter(
     ctx: Context<'_, DataType, ErrType>,
     #[description = "Nom de l’écrit"] nom: String,
@@ -40,7 +41,7 @@ pub async fn ajouter(
 }
 
 /// Liste tous les écrits d’un certain type ou status.
-#[poise::command(slash_command, category = "Recherche")]
+#[poise::command(slash_command, category = "Recherche", custom_data = CommandData::perms(Permission::READ), check = CommandData::check)]
 pub async fn lister(
     ctx: Context<'_, DataType, ErrType>,
     #[description = "Status recherché"] status: Option<Status>,
@@ -50,7 +51,7 @@ pub async fn lister(
 }
 
 /// Nettoie la base de données en supprimant les écrits abandonnés, publiés et refusés.
-#[poise::command(slash_command, category = "Base de données")]
+#[poise::command(slash_command, category = "Base de données", custom_data = CommandData::perms(Permission::MANAGE), check = CommandData::check)]
 pub async fn nettoyer(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType> {
     let bot = &mut ctx.data().lock().await;
     let list: Vec<u64> = bot.database.iter().filter(
@@ -72,7 +73,7 @@ pub async fn nettoyer(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType
 }
 
 /// Change le statut d’un écrit.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn statut(ctx: Context<'_, DataType, ErrType>,
                     #[description = "Critère d’identification de l’écrit"] critere: String,
                     #[description = "Nouveau statut"] statut: Status) -> Result<(), ErrType> {
@@ -80,7 +81,7 @@ pub async fn statut(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Change le type d’un écrit.
-#[poise::command(slash_command, category = "Édition", rename = "type")]
+#[poise::command(slash_command, category = "Édition", rename = "type", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn type_(ctx: Context<'_, DataType, ErrType>,
                    #[description = "Critère d’identification de l’écrit"] critere: String,
                    #[description = "Nouveau type"]
@@ -90,7 +91,7 @@ pub async fn type_(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Valide un écrit. Si c’est une idée, change son type en rapport.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::MANAGE), check = CommandData::check)]
 pub async fn valider(ctx: Context<'_, DataType, ErrType>,
                      #[description = "Critère d’identification de l’écrit"] critere: String) -> Result<(), ErrType> {
     let bot = &mut ctx.data().lock().await;
@@ -111,7 +112,7 @@ pub async fn valider(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Refuse un écrit.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::MANAGE), check = CommandData::check)]
 pub async fn refuser(ctx: Context<'_, DataType, ErrType>,
                      #[description = "Critère d’identification de l’écrit"] critere: String) -> Result<(), ErrType> {
     let bot = &mut ctx.data().lock().await;
@@ -126,7 +127,7 @@ pub async fn refuser(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Marque d’intérêt un écrit.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn marquer(ctx: Context<'_, DataType, ErrType>,
                      #[description = "Critère d’identification de l’écrit"] critere: String,
                      #[description = "Type de l’intérêt"]
@@ -158,7 +159,7 @@ pub async fn marquer(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Libère la marque d’intérêt d’un écrit.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn liberer(ctx: Context<'_, DataType, ErrType>,
                      #[description = "Critère d’identification de l’écrit"] critere: String,
                      #[description = "Nom de la personne qui a marqué l’écrit si ce n’est pas la personne exécutant la commande"] procuration: Option<String>) -> Result<(), ErrType> {
@@ -191,7 +192,7 @@ pub async fn liberer(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Indique qu’un écrit a été critiqué et qu’il est désormais en attente.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn critique(ctx: Context<'_, DataType, ErrType>,
                      #[description = "Critère d’identification de l’écrit"] critere: String) -> Result<(), ErrType> {
     let bot = &mut ctx.data().lock().await;
@@ -210,7 +211,7 @@ pub async fn critique(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Marque « Sans Nouvelles » tous les écrits antérieurs à la date donnée.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::MANAGE), check = CommandData::check)]
 pub async fn archiver_avant(ctx: Context<'_, DataType, ErrType>,
     #[description = "Date au format jj/mm/aaaa"] date: String) -> Result<(), ErrType> {
     ctx.defer().await?;
@@ -238,7 +239,7 @@ pub async fn archiver_avant(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Change l’auteur d’un écrit.
-#[poise::command(slash_command, category = "Édition")]
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn auteur(ctx: Context<'_, DataType, ErrType>,
                             #[description = "Critère d’identification de l’écrit"] critere: String,
                             #[description = "Nouvel auteur"] auteur: String ) -> Result<(), ErrType> {
@@ -254,7 +255,7 @@ pub async fn auteur(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Liste les écrits avec des critères précis.
-#[poise::command(slash_command, category = "Recherche")]
+#[poise::command(slash_command, category = "Recherche", custom_data = CommandData::perms(Permission::READ), check = CommandData::check)]
 pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
                     #[description = "Inclus dans le nom de l’écrit"] nom: Option<String>,
                     #[description = "Auteurs, séparés par des virgules"] auteurs: Option<String>,
@@ -350,7 +351,7 @@ pub async fn ulister(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Ajoute un tag à l’écrit sélectionné.
-#[poise::command(slash_command)]
+#[poise::command(slash_command, custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn atag(ctx: Context<'_, DataType, ErrType>,
                     #[description = "Critère d’identification de l’écrit"] critere: String,
                     #[description = "Tag à ajouter"] tag: String ) -> Result<(), ErrType> {
@@ -371,7 +372,7 @@ pub async fn atag(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Retire des tags à l’écrit sélectionné.
-#[poise::command(slash_command)]
+#[poise::command(slash_command, custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
 pub async fn rtag(ctx: Context<'_, DataType, ErrType>,
                   #[description = "Critère d’identification de l’écrit"] critere: String,
                   #[description = "Critère d’identification des tags"] critere_tag: String ) -> Result<(), ErrType> {
@@ -399,7 +400,7 @@ pub async fn rtag(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Liste les différents tags existants dans la base de données.
-#[poise::command(slash_command)]
+#[poise::command(slash_command, custom_data = CommandData::perms(Permission::READ), check = CommandData::check)]
 pub async fn lister_tags(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType> {
     ctx.defer().await?;
     let bot = &mut ctx.data().lock().await;
@@ -436,7 +437,7 @@ pub async fn lister_tags(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrT
 }
 
 /// Renvoie un écrit ouvert aléatoire du type demandé.
-#[poise::command(slash_command)]
+#[poise::command(slash_command, custom_data = CommandData::perms(Permission::READ), check = CommandData::check)]
 pub async fn aleatoire(ctx: Context<'_, DataType, ErrType>,
     #[description = "Type demandé, tous types si non spécifié"]
     #[rename = "type"] type_: Option<Type>) -> Result<(), ErrType> {
@@ -460,7 +461,7 @@ pub async fn aleatoire(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Renvoie le plus ancien écrit ouvert du type demandé.
-#[poise::command(slash_command)]
+#[poise::command(slash_command, custom_data = CommandData::perms(Permission::READ), check = CommandData::check)]
 pub async fn ancien(ctx: Context<'_, DataType, ErrType>,
                     #[description = "Type demandé, tous types si non spécifié"]
                     #[rename = "type"] type_: Option<Type>) -> Result<(), ErrType> {
@@ -487,7 +488,7 @@ pub async fn ancien(ctx: Context<'_, DataType, ErrType>,
 }
 
 /// Affiche la page d’aide du bot.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, custom_data = CommandData::perms(Permission::READ), check = CommandData::check)]
 pub async fn aide(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType> {
     ctx.send(CreateReply::default().embed(CreateEmbed::new()
         .title("Aide de Critibot")
