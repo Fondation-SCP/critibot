@@ -1,8 +1,7 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 
 use fondabots_lib::{affichan::Affichan, Bot, ErrType};
-use maplit::hashmap;
 use poise::futures_util::FutureExt;
 use poise::{BoxFuture, Context};
 use serenity::all::{ChannelId, GatewayIntents, RoleId, UserId};
@@ -48,6 +47,7 @@ async fn main() {
         match Bot::default()
             .owners(owners)
             .command_checker(Box::new(command_checker))
+            .set_log(878917114474410004)
             .setup(
             token.clone(),
             GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILD_MEMBERS,
@@ -64,9 +64,7 @@ async fn main() {
                     ecrit.type_ == Type::Autre
                 })),
             ],
-            hashmap! {
-                "logs" => 878917114474410004
-            }
+            HashMap::new()
         ).await {
             Ok(mut bot) => if let Err(e) = bot.start().await {
                 panic!("Erreur lors de l’exécution du bot: {e}");

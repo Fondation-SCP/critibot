@@ -34,6 +34,7 @@ pub async fn ajouter(
     if let Some(id) = Ecrit::find_id(&url) {
         bot.database.insert(id, Ecrit::new(nom.clone(), url, type_, status, auteur)?);
         ctx.say(format!("Écrit « {nom} » ajouté !")).await?;
+        bot.log(&ctx, format!("{} a ajouté l'écrit {nom} (id: {id})", tools::user_desc(ctx.author()))).await?;
     } else {
         ctx.say("URL malformée, impossible de déterminer l’identifiant de l’écrit.").await?;
     }
@@ -69,6 +70,7 @@ pub async fn nettoyer(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType
         }
     );
     ctx.say(format!("{nb_deleted} écrit(s) abandonné(s), publié(s) et refusé(s) supprimé(s) de la liste.")).await?;
+    bot.log(&ctx, format!("{} a nettoyé la base de données. {nb_deleted} écrits supprimés.", tools::user_desc(ctx.author()))).await?;
     Ok(())
 }
 
@@ -107,6 +109,9 @@ pub async fn valider(ctx: Context<'_, DataType, ErrType>,
             ctx.say(format!("Écrit « {} » validé !", ecrit.get_name())).await?;
         }
         ecrit.modified = true;
+        let ecrit = bot.database.get(&object_id).unwrap();
+        bot.log(&ctx, format!("{} a validé l'écrit {} (id: {object_id})", tools::user_desc(ctx.author()), ecrit.get_name())).await?;
+
     }
     Ok(())
 }
@@ -122,6 +127,8 @@ pub async fn refuser(ctx: Context<'_, DataType, ErrType>,
         ecrit.status = Status::Refuse;
         ecrit.modified = true;
         ctx.say(format!("Écrit « {} » refusé !", ecrit.get_name())).await?;
+        let ecrit = bot.database.get(&object_id).unwrap();
+        bot.log(&ctx, format!("{} a refusé l'écrit {} (id: {object_id})", tools::user_desc(ctx.author()), ecrit.get_name())).await?;
     }
     Ok(())
 }
@@ -144,12 +151,19 @@ pub async fn marquer(ctx: Context<'_, DataType, ErrType>,
                 author_member.nick.as_ref().unwrap_or(&author_member.user.name)
             );
             ctx.say(format!("Écrit « {} » marqué d’intérêt pour {member_name}", ecrit.get_name())).await?;
+
             ecrit.marquer(Interet {
                 name: member_name.clone(),
                 date: Timestamp::now(),
                 type_: Interet::get_type(type_).to_string(),
                 member: if procuration.is_none() {author_member.user.id.get()} else {0},
             });
+            let ecrit = bot.database.get(&object_id).unwrap();
+            bot.log(&ctx, format!("{} a marqué un intérêt sur l'écrit {} (id: {object_id}) pour {}",
+                                  tools::user_desc(ctx.author()),
+                                  ecrit.get_name(),
+                                  procuration.unwrap_or(ctx.author().display_name().to_string())
+            )).await?;
         } else {
             ctx.say(format!("L’écrit « {} » n’est pas ouvert à la critique.", bot.database.get(&object_id).unwrap().get_name())).await?;
         }
@@ -178,6 +192,12 @@ pub async fn liberer(ctx: Context<'_, DataType, ErrType>,
             if a_pu_etre_libere {
                 ctx.say(format!("Écrit « {} » libéré de la marque de {}", ecrit.get_name(),
                                 procuration.as_ref().unwrap_or(author_member.nick.as_ref().unwrap_or(&author_member.user.name)))).await?;
+                let ecrit = bot.database.get(&object_id).unwrap();
+                bot.log(&ctx, format!("{} a libéré un intérêt sur l'écrit {} (id: {object_id}) pour {}",
+                                      tools::user_desc(ctx.author()),
+                                      ecrit.get_name(),
+                                      procuration.unwrap_or(ctx.author().display_name().to_string())
+                )).await?;
             } else {
                 ctx.say(format!("Aucune marque d’intérêt de {} pour l’écrit « {} ».",
                                 procuration.as_ref().unwrap_or(author_member.nick.as_ref().unwrap_or(&author_member.user.name)),
@@ -203,6 +223,8 @@ pub async fn critique(ctx: Context<'_, DataType, ErrType>,
             ecrit.status = Status::EnAttente;
             ecrit.modified = true;
             ctx.say(format!("Écrit « {} » critiqué !", ecrit.get_name())).await?;
+            let ecrit = bot.database.get(&object_id).unwrap();
+            bot.log(&ctx, format!("{} a marqué l'écrit {} (id: {object_id}) comme critiqué.", tools::user_desc(ctx.author()), ecrit.get_name())).await?;
         } else {
             ctx.say(format!("L’écrit « {} » n’est pas ouvert à la critique.", bot.database.get(&object_id).unwrap().get_name())).await?;
         }
@@ -231,6 +253,7 @@ pub async fn archiver_avant(ctx: Context<'_, DataType, ErrType>,
             }
         );
         ctx.say(format!("{count} écrit(s) ont été marqué(s) sans nouvelles depuis le {}.", date.format("%d %B %Y"))).await?;
+        bot.log(&ctx, format!("{} a marqué {count} écrits comme sans nouvelles.", tools::user_desc(ctx.author()))).await?;
     } else {
         ctx.say("Date mal formatée. La date doit être au format jj/nn/aaaa.").await?;
     }
@@ -246,8 +269,14 @@ pub async fn auteur(ctx: Context<'_, DataType, ErrType>,
     let bot = &mut ctx.data().lock().await;
     if let Some(object_id) = get_object(&ctx, bot, &critere).await? {
         bot.archive(vec![object_id]);
-        let ecrit = bot.database.get_mut(&object_id).unwrap();
+        let ecrit = bot.database.get(&object_id).unwrap();
         ctx.say(format!("L’auteur de l’écrit « {} » changé pour « {auteur} »", ecrit.get_name())).await?;
+        bot.log(&ctx, format!("{} a changé l'auteur de {} (id: {object_id}) de {} à {auteur}",
+            tools::user_desc(ctx.author()),
+            ecrit.get_name(),
+            ecrit.auteur
+        )).await?;
+        let ecrit = bot.database.get_mut(&object_id).unwrap();
         ecrit.auteur = auteur;
         ecrit.modified = true;
     }
@@ -365,6 +394,8 @@ pub async fn atag(ctx: Context<'_, DataType, ErrType>,
             let ecrit = bot.database.get_mut(&object_id).unwrap();
             ecrit.tags.push(tag.clone());
             ecrit.modified = true;
+            let ecrit = bot.database.get(&object_id).unwrap();
+            bot.log(&ctx, format!("{} a ajouté le tag {tag} à l'écrit {} (id: {object_id}).", tools::user_desc(ctx.author()), ecrit.get_name())).await?;
             ctx.say(format!("Le tag « {tag} » a été ajouté à l’écrit « {} » !", ecrit.nom))
         }.await?;
     }
@@ -391,6 +422,8 @@ pub async fn rtag(ctx: Context<'_, DataType, ErrType>,
             let ecrit = bot.database.get_mut(&object_id).unwrap();
             ecrit.tags = tags_to_keep;
             ecrit.modified = true;
+            let ecrit = bot.database.get(&object_id).unwrap();
+            bot.log(&ctx, format!("{} a retiré les tags correspondant au critère {critere} à l'écrit {} (id: {object_id}).", tools::user_desc(ctx.author()), ecrit.get_name())).await?;
             ctx.say(format!("Les tags correspondant au critère ont été retirés de l’écrit « {} » !", ecrit.get_name()))
         } else {
             ctx.say(format!("Aucun tag correspondant trouvé pour l’écrit « {} ».", ecrit.get_name()))
@@ -526,9 +559,9 @@ pub async fn aide(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType> {
             `tag_et` : Si \"Vrai\", l’écrit doit posséder tous les tags trouvés plutôt qu’un seul.\n\
             `avant: {jj/mm/aaaa}` : Les écrits doivent avoir été modifiés pour la dernière fois avant la date indiquée.\n\
             `après: {jj/mm/aaaa}` : Les écirts doivent avoir été modifiés pour la dernière fois après la date indiquée.", false),
-            ("Code source", "Disponible sur [Github](https://github.com/Fondation-SCP/fondabots).", false)
+            ("Code source", "Disponible sur [Github](https://github.com/Fondation-SCP/critibot).", false)
         ])
-        .footer(CreateEmbedFooter::new("Version 4.0.1 (Rust 1.0.1)"))
+        .footer(CreateEmbedFooter::new("Version 4.1.0 (Rust 1.1.0)"))
         .author(CreateEmbedAuthor::new("Critibot").icon_url("https://media.discordapp.net/attachments/719194758093733988/842082066589679676/Critiqueurs5.jpg"))
     )).await?;
     Ok(())

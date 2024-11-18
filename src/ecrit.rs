@@ -8,14 +8,14 @@ use fondabots_lib;
 use fondabots_lib::object::Field;
 use fondabots_lib::tools::basicize;
 use fondabots_lib::yaml_rust2::{yaml, Yaml};
-use fondabots_lib::DataType;
 use fondabots_lib::ErrType;
+use fondabots_lib::{tools, DataType};
 use fondabots_lib::{Bot, Object};
 use poise::serenity_prelude as serenity;
 use regex::Regex;
 use rss::Channel;
 use serenity::all::Context as SerenityContext;
-use serenity::all::{ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditMessage, Timestamp};
+use serenity::all::{ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage, Timestamp};
 use serenity::builder::CreateEmbedAuthor;
 
 use fields::Interet;
@@ -360,17 +360,19 @@ impl Object for Ecrit {
                     }
                     "c" => {
                         interaction.create_response(ctx, CreateInteractionResponse::Acknowledge).await?;
-                        bot.get_absolute_chan("logs").unwrap()
-                            .send_message(ctx, CreateMessage::new().content(format!("« {} » critiqué !",
-                                                                                    bot.database.get(&id).ok_or(ErrType::ObjectNotFound(id.to_string()))?.get_name()))).await?;
+                        bot.log(&ctx, format!("{} a marqué {} (id: {id}) comme critiqué.",
+                            tools::user_desc(&interaction.user),
+                            bot.database.get(&id).unwrap().get_name()
+                        )).await?;
                         bot.archive(vec![id]);
                         bot.database.get_mut(&id).unwrap()/* Error check already done above */.critique();
                     }
                     "r" => {
                         interaction.create_response(ctx, CreateInteractionResponse::Acknowledge).await?;
-                        bot.get_absolute_chan("logs").unwrap()
-                            .send_message(ctx, CreateMessage::new().content(format!("« {} » refusé !",
-                                                                                    bot.database.get(&id).ok_or(ErrType::ObjectNotFound(id.to_string()))?.get_name()))).await?;
+                        bot.log(&ctx, format!("{} a refusé {} (id: {id}).",
+                                              tools::user_desc(&interaction.user),
+                                              bot.database.get(&id).unwrap().get_name()
+                        )).await?;
                         bot.archive(vec![id]);
                         bot.database.get_mut(&id).unwrap()/* Error check already done above */.status = Status::Refuse;
                     }
@@ -380,6 +382,10 @@ impl Object for Ecrit {
                             bot.archive(vec![id]);
                             bot.database.get_mut(&id).unwrap()
                                 .liberer_name(interaction.member.as_ref().unwrap().nick.as_ref().unwrap_or(&interaction.member.as_ref().unwrap().user.name));
+                            bot.log(&ctx, format!("{} a libéré sa marque sur l'écrit {} (id: {id}).",
+                                                  tools::user_desc(&interaction.user),
+                                                  bot.database.get(&id).unwrap().get_name()
+                            )).await?;
                         } else {
                             return Err(ErrType::ObjectNotFound(id.to_string()));
                         }
@@ -390,6 +396,10 @@ impl Object for Ecrit {
                             bot.archive(vec![id]);
                             bot.database.get_mut(&id).unwrap().status = Status::Ouvert;
                             bot.database.get_mut(&id).unwrap().modified = true;
+                            bot.log(&ctx, format!("{} a up {} (id: {id}).",
+                                                  tools::user_desc(&interaction.user),
+                                                  bot.database.get(&id).unwrap().get_name()
+                            )).await?;
                         } else {
                             return Err(ErrType::ObjectNotFound(id.to_string()));
                         }
@@ -400,6 +410,10 @@ impl Object for Ecrit {
                             bot.archive(vec![id]);
                             bot.database.get_mut(&id).unwrap().status = Status::Publie;
                             bot.database.get_mut(&id).unwrap().modified = true;
+                            bot.log(&ctx, format!("{} a marqué {} (id: {id}) comme publié.",
+                                                  tools::user_desc(&interaction.user),
+                                                  bot.database.get(&id).unwrap().get_name()
+                            )).await?;
                         } else {
                             return Err(ErrType::ObjectNotFound(id.to_string()));
                         }
@@ -432,6 +446,10 @@ impl Object for Ecrit {
                     });
                     interaction.create_response(ctx, CreateInteractionResponse::UpdateMessage(
                         CreateInteractionResponseMessage::new().content("Écrit marqué.").components(vec![]).ephemeral(true))).await?;
+                    bot.log(&ctx, format!("{} a marqué son intérêt sur {} (id: {id}).",
+                                          tools::user_desc(&interaction.user),
+                                          bot.database.get(&id).unwrap().get_name()
+                    )).await?;
                 } else {
                     interaction.create_response(ctx, CreateInteractionResponse::Acknowledge).await?;
                     return Err(ErrType::ObjectNotFound(id.to_string()));
