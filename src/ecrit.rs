@@ -71,43 +71,33 @@ impl Ecrit {
         self.interesses.clear();
     }
 
+
+    fn _liberer(&mut self, index: Option<usize>) -> bool {
+        if let Some(index) = index {
+            self.interesses.remove(index);
+            if self.interesses.len() == 0 {
+                self.status = Status::Ouvert;
+            }
+        }
+        index.is_some()
+    }
+
     pub fn liberer_id(&mut self, membre: u64) -> bool {
         if membre == 0 {  /*  Étant donné qu'il peut exister des réservations à l'identifiant zéro, */
             return false; /*  ce sont les réservations faites pour un autre utilisateur             */
         }
-
-        let index = self.interesses.iter().position(|interet| interet.member == membre);
-
-        if let Some(index) = index {
-            self.interesses.remove(index);
-            if self.interesses.len() == 0 {
-                self.status = Status::Ouvert;
-            }
-        }
-        index.is_some()
+        self._liberer(self.interesses.iter().position(|interet| interet.member == membre))
     }
 
     pub fn liberer_name(&mut self, membre: &String) -> bool {
-        let index = self.interesses.iter().position(|interet| interet.name == *membre);
-        if let Some(index) = index {
-            self.interesses.remove(index);
-            if self.interesses.len() == 0 {
-                self.status = Status::Ouvert;
-            }
-        }
-        index.is_some()
+        self._liberer(self.interesses.iter().position(|interet| interet.name == *membre))
     }
 
     pub fn find_id(url: &String) -> Option<u64> {
-        let regex_id = Regex::new(r"t-(\d+)/?").unwrap();
-        if let Some(v) = regex_id.captures(url.as_str()) {
-            if let Some(w) = v.extract::<1>().1.get(0) {
-                if let Ok(ret) = w.parse() {
-                    return Some(ret);
-                }
-            }
-        }
-        None
+        Regex::new(r"t-(\d+)/?").unwrap().captures(url.as_str())
+            .and_then(|v| v.extract::<1>().1.get(0)
+                .and_then(|w| w.parse().ok())
+            )
     }
 
     pub fn marquer(&mut self, interet: Interet) {
@@ -118,7 +108,7 @@ impl Ecrit {
         self.modified = true;
     }
 
-    pub fn liste_auteurs<'a>(database: &'a HashMap<u64, Self>) -> Vec<&'a String> {
+    pub fn liste_auteurs(database: &HashMap<u64, Self>) -> Vec<&String> {
         database.iter().map(|(_, ecrit)| &ecrit.auteur)
             .fold(Vec::new(), |mut vec, auteur| {
                 if vec.iter().find(|&&vec_auteur| *vec_auteur == *auteur).is_none() {
@@ -194,7 +184,6 @@ impl Object for Ecrit {
 
     fn from_yaml(data: &Yaml) -> Result<Self, ErrType> {
         let data_hash = data;
-        /*.ok_or(ErrType::YamlParseError(format!("Entrée d’écrit invalide (n’est pas un hash).")))?;*/
         let lien = data_hash["lien"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un champ lien.".to_string()))?.to_string();
         Ok(Self {
             nom: data_hash["nom"].as_str().ok_or(ErrType::YamlParseError("Erreur de yaml dans un champ nom.".to_string()))?.to_string(),
@@ -464,9 +453,9 @@ impl Object for Ecrit {
 
     async fn maj_rss(bot: &DataType<Self>) -> Result<(), ErrType> {
         let url = "http://fondationscp.wikidot.com/feed/forum/ct-656675.xml";
-        let regex_balises = Regex::new(r##"\s*\[([^\[]*)]"##).unwrap();
+        let regex_balises = Regex::new(r##"\s*\[([^\[]*)]"##)?;
         /* OH FUCK */
-        let regex_titres = Regex::new(r##"(?i)\s*(?:\s*[\[(][^\[]*?[])][\s/\\\-]*)*(?:scp(?:[-\s][\dXY#█?]+(?:[-\s]fr)?)?)?[\s:\-"]*([^"]*?(?:"[^"]+"?[^"]*?)*)[\s".]*(?:\(.*(?:provisoire|temporaire|version).*\))?[\s".]*$"##).unwrap();
+        let regex_titres = Regex::new(r##"(?i)\s*(?:\s*[\[(][^\[]*?[])][\s/\\\-]*)*(?:scp(?:[-\s][\dXY#█?]+(?:[-\s]fr)?)?)?[\s:\-"]*([^"]*?(?:"[^"]+"?[^"]*?)*)[\s".]*(?:\(.*(?:provisoire|temporaire|version).*\))?[\s".]*$"##)?;
         let bot = &mut bot.lock().await;
         let rss = Channel::read_from(&reqwest::get(url).await?.bytes().await?[..])?;
         /* Copie étant donné qu'elle ne coûte pas grand chose par rapport à la difficulté que ce serait

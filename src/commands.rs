@@ -271,11 +271,7 @@ pub async fn auteur(ctx: Context<'_, DataType, ErrType>,
         bot.archive(vec![object_id]);
         let ecrit = bot.database.get(&object_id).unwrap();
         ctx.say(format!("L’auteur de l’écrit « {} » changé pour « {auteur} »", ecrit.get_name())).await?;
-        bot.log(&ctx, format!("{} a changé l'auteur de {} (id: {object_id}) de {} à {auteur}",
-            tools::user_desc(ctx.author()),
-            ecrit.get_name(),
-            ecrit.auteur
-        )).await?;
+        bot.log(&ctx, format!("{} a changé l'auteur de {} (id: {object_id}) de {} à {auteur}", tools::user_desc(ctx.author()), ecrit.get_name(), ecrit.auteur)).await?;
         let ecrit = bot.database.get_mut(&object_id).unwrap();
         ecrit.auteur = auteur;
         ecrit.modified = true;
