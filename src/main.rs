@@ -22,11 +22,13 @@ fn command_checker(ctx: Context<'_, DataType, ErrType>) -> BoxFuture<Result<bool
         let permissions = ctx.command().custom_data.downcast_ref().unwrap_or(&CommandData::default()).permission;
         let member = ctx.author_member().await;
         let auth = match member {
-            Some(member) => match permissions {
-                Permission::READ | Permission::NONE => true,
-                Permission::WRITE => member.roles.contains(&RoleId::new(417334522775076864)), /* Classe-C membre */
-                Permission::MANAGE => member.roles.contains(&RoleId::new(811582204790571020)) /* Équipe Critique */
-                    || member.roles.contains(&RoleId::new(417333090625781761)), /* Staff */
+            Some(member) => {
+                let can_thanks_to_perms = match permissions {
+                    Permission::READ | Permission::NONE => true,
+                    Permission::WRITE => member.roles.contains(&RoleId::new(417334522775076864)), /* Classe-C membre */
+                    Permission::MANAGE => member.roles.contains(&RoleId::new(811582204790571020)) /* Équipe Critique */
+                };
+                can_thanks_to_perms || member.roles.contains(&RoleId::new(417333090625781761)) /* Staff */
             },
             None => false
         };
@@ -47,14 +49,14 @@ async fn main() {
         match Bot::default()
             .owners(owners)
             .command_checker(Box::new(command_checker))
-            .set_log(878917114474410004)
+            .set_log(725708994915860510)
             .setup(
             token.clone(),
             GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILD_MEMBERS,
             "./critibot.yml",
             commands::command_list(),
             vec![
-                Affichan::new(ChannelId::new(1306257262360264714), Box::new(|ecrit| {
+                Affichan::new(ChannelId::new(1299620421506699275), Box::new(|ecrit| {
                     ecrit.status == Status::Ouvert || ecrit.status == Status::OuvertPlus
                 })),
                 Affichan::new(ChannelId::new(896361827884220467), Box::new(|ecrit| {
