@@ -4,7 +4,7 @@ version = "4.1.0"
 edition = "2021"
 
 [dependencies]
-strum = "0.26"
+strum = "0.27"
 strum_macros = "0.26"
 rand = "0.8"
 maplit = "1.0"
