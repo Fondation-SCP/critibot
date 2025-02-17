@@ -14,22 +14,15 @@ use super::Ecrit;
 #[derive(EnumIter, Clone, PartialEq, Eq, ChoiceParameter, Debug)]
 pub enum Status {
     Ouvert,
-    #[name = "En Attente"]
     EnAttente,
     Abandonne,
-    #[name = "En pause"]
     EnPause,
-    #[name = "Sans nouvelles"]
     SansNouvelles,
     Inconnu,
-    #[name = "Publié"]
     Publie,
-    #[name = "Validé"]
     Valide,
-    #[name = "Refusé"]
     Refuse,
     Infraction,
-    #[name = "Ouvert*"]
     OuvertPlus
 }
 

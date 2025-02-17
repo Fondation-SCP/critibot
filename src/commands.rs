@@ -11,7 +11,7 @@ use fondabots_lib::{
 };
 use poise::{Command, Context, CreateReply};
 use rand::prelude::*;
-use serenity::all::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, Timestamp};
+use serenity::all::{ChannelId, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, Timestamp};
 
 use crate::{
     ecrit::fields::Type,
@@ -90,6 +90,25 @@ pub async fn type_(ctx: Context<'_, DataType, ErrType>,
                    #[rename = "type"]
                    type_: Type) -> Result<(), ErrType> {
     generic_commands::change_field(ctx, critere, type_).await
+}
+
+/// Ajoute ou supprime (paramètre vide) le lien Discord d'un écrit.
+#[poise::command(slash_command, category = "Édition", custom_data = CommandData::perms(Permission::WRITE), check = CommandData::check)]
+pub async fn lien_discord(ctx: Context<'_, DataType, ErrType>,
+                          #[description = "Critère d'identification de l'écrit"] critere: String,
+                          #[description = "Salon Discord"] fil: Option<ChannelId>) -> Result<(), ErrType> {
+    let bot = &mut ctx.data().lock().await;
+    if let Some(object_id) = get_object(&ctx, bot, &critere).await? {
+        let ecrit = bot.database.get_mut(&object_id).unwrap();
+        ecrit.discord_chan = fil;
+        ecrit.modified = true;
+        if fil.is_some() {
+            ctx.say(format!("Lien Discord ajouté à l'écrit {}", ecrit.get_name())).await?;
+        } else {
+            ctx.say(format!("Lien Discord retiré de l'écrit {}", ecrit.get_name())).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Valide un écrit. Si c’est une idée, change son type en rapport.
@@ -557,7 +576,7 @@ pub async fn aide(ctx: Context<'_, DataType, ErrType>) -> Result<(), ErrType> {
             `après: {jj/mm/aaaa}` : Les écirts doivent avoir été modifiés pour la dernière fois après la date indiquée.", false),
             ("Code source", "Disponible sur [Github](https://github.com/Fondation-SCP/critibot).", false)
         ])
-        .footer(CreateEmbedFooter::new("Version 4.1.0 (Rust 1.1.0)"))
+        .footer(CreateEmbedFooter::new("Version 4.2.0 (Rust 1.2.0)"))
         .author(CreateEmbedAuthor::new("Critibot").icon_url("https://media.discordapp.net/attachments/719194758093733988/842082066589679676/Critiqueurs5.jpg"))
     )).await?;
     Ok(())
@@ -568,5 +587,5 @@ pub fn command_list() -> Vec<Command<DataType, ErrType>> {
     vec![ajouter(), lister(), nettoyer(), statut(), type_(), marquer(), liberer(), critique(),
          archiver_avant(), auteur(), ulister(), atag(), rtag(), lister_tags(), alias("ajouter_tag", atag()),
         alias("retirer_tag", rtag()), alias("supprimer_tag", rtag()), aleatoire(), alias("random", aleatoire()),
-        ancien(), aide(), alias("help", aide()), valider()]
+        ancien(), aide(), alias("help", aide()), valider(), lien_discord()]
 }

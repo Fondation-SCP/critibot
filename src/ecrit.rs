@@ -14,8 +14,8 @@ use fondabots_lib::{Bot, Object};
 use poise::serenity_prelude as serenity;
 use regex::Regex;
 use rss::Channel;
-use serenity::all::Context as SerenityContext;
 use serenity::all::{ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage, Timestamp};
+use serenity::all::{ChannelId, Context as SerenityContext};
 use serenity::builder::CreateEmbedAuthor;
 
 use fields::Interet;
@@ -35,6 +35,7 @@ pub struct Ecrit {
     interesses: Vec<Interet>,
     pub modified: bool,
     pub tags: Vec<String>,
+    pub discord_chan: Option<ChannelId>,
     id: u64,
 }
 
@@ -57,6 +58,7 @@ impl Ecrit {
             interesses: Vec::new(),
             modified: false,
             tags: Vec::new(),
+            discord_chan: None,
         })
     }
 
@@ -175,6 +177,7 @@ impl Object for Ecrit {
             modified: false,
             tags: Vec::new(),
             id: 0,
+            discord_chan: None,
         }
     }
 
@@ -210,6 +213,8 @@ impl Object for Ecrit {
                 .ok_or(ErrType::YamlParseError("Erreur de yaml dans un last_update.".to_string()))?.try_into()?)?,
             id: Ecrit::find_id(&lien).ok_or(ErrType::NoneError)?,
             lien,
+            discord_chan: data_hash["discord-channel"].as_i64()
+                .map(|id| ChannelId::new(id.unsigned_abs()))
         })
     }
 
@@ -239,6 +244,9 @@ impl Object for Ecrit {
                 }
             ).collect()
         ));
+        if let Some(chan_id) = self.discord_chan {
+            yaml_out.insert(Yaml::String("discord-channel".to_string()), Yaml::Integer(chan_id.get() as i64));
+        }
         Yaml::Hash(yaml_out)
     }
 
@@ -269,6 +277,10 @@ impl Object for Ecrit {
             .reduce(|str_total, str_current| str_total + str_current.as_str());
         if let Some(tags_list) = tags_list {
             fields.push(("Tags", tags_list, false));
+        }
+
+        if let Some(chan_id) = self.discord_chan {
+            fields.push(("Lien Discord", format!("<#{}>", chan_id.get()), true));
         }
 
         CreateEmbed::new()
@@ -450,7 +462,6 @@ impl Object for Ecrit {
         Ok(())
     }
 
-
     async fn maj_rss(bot: &DataType<Self>) -> Result<(), ErrType> {
         let url = "http://fondationscp.wikidot.com/feed/forum/ct-656675.xml";
         let regex_balises = Regex::new(r##"\s*\[([^\[]*)]"##)?;
@@ -526,6 +537,7 @@ impl Object for Ecrit {
                     modified: false,
                     tags: vec![],
                     id,
+                    discord_chan: None
                 }))
             }).map(|(date, ecrit)| {
             if bot.database.contains_key(&ecrit.id) {
