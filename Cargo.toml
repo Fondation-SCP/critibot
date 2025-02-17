@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 strum = "0.26"
 strum_macros = "0.26"
-rand = "0.8"
+rand = "0.9"
 regex = "1.10"
 fondabots-lib = { git = "https://github.com/Fondation-SCP/fondabots-lib", tag = "v1.4.0"}
 serenity = "0.12"
